@@ -86,7 +86,6 @@ function App() {
 	  }, [stableSortData]);
 
 
-  // Initialize: Check Local Storage
   useEffect(() => {
     const checkToken = async () => {
 		setAppState(AppState.LOADING);
