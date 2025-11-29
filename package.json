@@ -29,6 +29,7 @@
   "build": {
     "appId": "com.onegamerstory.smarthomecontrol",
     "productName": "Yandex Smart Home Control",
+	"artifactName": "${productName} Setup v${version}.${ext}",
 	"icon": "resources/icon.png",
     "files": [
 		"dist/**/*",        
