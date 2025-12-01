@@ -37,7 +37,7 @@ export const TokenInput: React.FC<TokenInputProps> = ({ onTokenSubmit, isLoading
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="relative">
             <input
-              type="text"
+              type="password"
               value={token}
               onChange={(e) => setToken(e.target.value)}
               placeholder="y0_AgAAAA..."

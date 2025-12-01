@@ -64,3 +64,14 @@ export enum AppState {
   DASHBOARD = 'DASHBOARD',
   ERROR = 'ERROR'
 }
+
+export type TrayItemType = 'device' | 'scenario';
+
+export interface TrayMenuItem {
+    id: string;
+    name: string;
+    type: TrayItemType;
+    // Для устройств
+    isToggleable?: boolean; 
+    isOn?: boolean; 
+}

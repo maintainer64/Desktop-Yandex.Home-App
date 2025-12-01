@@ -1,96 +1,230 @@
 // main.js
 
-import { app, BrowserWindow, ipcMain } from 'electron'; // <-- Все модули Electron
+import { app, BrowserWindow, ipcMain, Menu, Tray } from 'electron'; // <-- Добавлен Menu, Tray
 import path from 'path';
 import { fileURLToPath } from 'url';
 // Импорт yandex-api.js
-import * as yandexApi from './yandex-api.js'; 
+import * as yandexApi from './yandex-api.js'; 
 import keytar from 'keytar';
 
 // Установка __dirname и __filename для ES Modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const SERVICE_NAME = 'SmartHomeControlApp'; 
-// Уникальный аккаунт (можно использовать фиксированное имя, так как токен один)
+const SERVICE_NAME = 'SmartHomeControlApp'; 
 const ACCOUNT_NAME = 'YandexToken';
 
-function createWindow () {
-  const mainWindow = new BrowserWindow({
-    width: 1024,
-    height: 768,
-    webPreferences: {
-      // Это важно для безопасности, отключает Node.js API во фронтенде
-      nodeIntegration: false, 
-      contextIsolation: true,
-      // В режиме разработки эта настройка может быть другой
-	  preload: path.join(__dirname, 'preload.cjs')
-    }
-  });
+let mainWindow = null;
+let appTray = null; // Переменная для хранения экземпляра Tray
+let favoritesData = []; // Данные избранных устройств/сценариев
 
-  // В режиме разработки загружаем URL-адрес сервера Vite
-  // В режиме сборки (production) загружаем index.html из папки dist
-  if (process.env.NODE_ENV === 'development') {
-    mainWindow.loadURL('http://localhost:5173'); 
-  } else {
-    mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
-  }
+// --- 1. Обработка закрытия окна (свернуть в трей) ---
+const minimizeToTray = (event) => {
+	// Если пользователь нажимает крестик, сворачиваем в трей (на macOS окно может скрыться/закрыться само)
+	if (appTray && mainWindow && process.platform !== 'darwin') {
+		event.preventDefault(); // Предотвращаем закрытие
+		mainWindow.hide();      // Скрываем окно
+	}
+};
+
+// Функция для создания Tray
+function createTray() {
+    // ВНИМАНИЕ: Для продакшена нужно добавить иконку, например, в 'assets/icon.png'
+    // В режиме разработки используем заглушку.
+    const iconPath = path.join(__dirname, process.env.NODE_ENV === 'development' ? 'resources/icon.png' : 'resources/icon.png');
+    // Используем системную иконку или заглушку (для кроссплатформенности)
+    const fallbackIconPath = path.join(__dirname, 'electron.png'); // Предполагаем наличие electron.png в корне dist/
+    
+    // Используем fallback, если иконка не найдена, или просто строку, которая работает
+    try {
+        appTray = new Tray(iconPath);
+    } catch (e) {
+        console.warn(`Tray icon not found at ${iconPath}. Falling back.`);
+        // На Windows можно использовать иконки из DLL, но для кроссплатформенности проще использовать заглушку
+        appTray = new Tray(fallbackIconPath);
+    }
+    
+    appTray.setToolTip('Управление Умным Домом Яндекс');
+    
+    // Устанавливаем обработчик клика для открытия окна
+    appTray.on('click', () => {
+        if (mainWindow) {
+            mainWindow.show();
+        } else {
+            createWindow();
+        }
+    });
+
+    // Обновляем контекстное меню сразу после создания
+    updateTrayMenu();
+}
+
+// Функция для создания контекстного меню Tray
+function updateTrayMenu() {
+    if (!appTray) return;
+
+    // --- Динамическая секция избранных элементов ---
+    const favoriteMenuItems = favoritesData.map(item => {
+        const isDevice = item.type === 'device';
+        const isToggleableDevice = isDevice && item.isToggleable;
+        
+        // Для устройств отображаем статус (Вкл/Выкл)
+        const deviceStatus = isDevice
+            ? (item.isOn
+                ? ' 🟢' // Зеленый кружок для "Вкл" (включено)
+                : ' 🔴') // Красный кружок для "Выкл" (выключено)
+            : '';
+        const label = `${item.name}${deviceStatus}`;
+        
+        // Определяем действие при клике
+        let clickAction = null;
+
+        if (isToggleableDevice) {
+            // Отправляем команду TOGGLE_DEVICE в React-приложение
+            clickAction = () => {
+                if (mainWindow) {
+                    mainWindow.webContents.send('tray:execute-command', 'TOGGLE_DEVICE', item.id, item.isOn);
+                }
+            };
+        } else if (item.type === 'scenario') {
+            // Отправляем команду EXECUTE_SCENARIO в React-приложение
+             clickAction = () => {
+                if (mainWindow) {
+                    mainWindow.webContents.send('tray:execute-command', 'EXECUTE_SCENARIO', item.id);
+                }
+            };
+        }
+        
+        return {
+            label: label,
+            type: 'normal',
+            enabled: !!clickAction, // Отключаем, если нет действия
+            click: clickAction,
+        };
+    });
+
+    // --- Основное меню ---
+    const contextMenu = Menu.buildFromTemplate([
+        { 
+            label: 'Открыть приложение', 
+            click: () => mainWindow ? mainWindow.show() : createWindow()
+        },
+        // Разделитель перед динамической секцией, если она не пуста
+        ...(favoriteMenuItems.length > 0 ? [{ type: 'separator' }] : []), 
+        
+        // Динамическая секция
+        ...favoriteMenuItems,
+        
+        // Разделитель перед "Выход"
+        { type: 'separator' },
+        { 
+            label: 'Выход', 
+            click: () => {
+                // Удаляем слушатель 'close', чтобы гарантированно закрыть приложение
+                if (mainWindow) {
+                    mainWindow.removeListener('close', minimizeToTray);
+                }
+                app.quit();
+            }
+        },
+    ]);
+
+    appTray.setContextMenu(contextMenu);
+}
+
+
+function createWindow () {
+    mainWindow = new BrowserWindow({
+        width: 1024,
+        height: 768,
+        webPreferences: {
+            nodeIntegration: false, 
+            contextIsolation: true,
+            preload: path.join(__dirname, 'preload.cjs')
+        }
+    });
+    
+    mainWindow.on('close', minimizeToTray);
+    
+    // Обработка восстановления из трея
+    mainWindow.on('restore', () => {
+        mainWindow.show();
+    });
+
+
+    // В режиме разработки загружаем URL-адрес сервера Vite
+    if (process.env.NODE_ENV === 'development') {
+        mainWindow.loadURL('http://localhost:5173'); 
+    } else {
+        mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
+    }
 }
 
 // Когда Electron готов
 app.whenReady().then(() => {
     createWindow();
+    createTray(); // Создаем Tray
     
-    ipcMain.handle('yandex-api:fetchUserInfo', async (event, token) => {
-        try {
-            return await yandexApi.fetchUserInfo(token);
-        } catch (error) {
-            throw new Error(error.message); 
-        }
-    });
+    ipcMain.handle('yandex-api:fetchUserInfo', async (event, token) => {
+        try {
+            return await yandexApi.fetchUserInfo(token);
+        } catch (error) {
+            throw new Error(error.message); 
+        }
+    });
 
-    ipcMain.handle('yandex-api:executeScenario', async (event, token, scenarioId) => {
-        try {
-            return await yandexApi.executeScenario(token, scenarioId);
-        } catch (error) {
-            throw new Error(error.message);
-        }
-    });
+    ipcMain.handle('yandex-api:executeScenario', async (event, token, scenarioId) => {
+        try {
+            return await yandexApi.executeScenario(token, scenarioId);
+        } catch (error) {
+            throw new Error(error.message);
+        }
+    });
 
-    ipcMain.handle('yandex-api:toggleDevice', async (event, token, deviceId, newState) => {
-        try {
-            return await yandexApi.toggleDevice(token, deviceId, newState);
-        } catch (error) {
-            throw new Error(error.message);
-        }
-    });
+    ipcMain.handle('yandex-api:toggleDevice', async (event, token, deviceId, newState) => {
+        try {
+            return await yandexApi.toggleDevice(token, deviceId, newState);
+        } catch (error) {
+            throw new Error(error.message);
+        }
+    });
 
 	ipcMain.handle('secure:getToken', async () => {
-        // Читает токен из системного хранилища
-        return await keytar.getPassword(SERVICE_NAME, ACCOUNT_NAME);
-    });
+        // Читает токен из системного хранилища
+        return await keytar.getPassword(SERVICE_NAME, ACCOUNT_NAME);
+    });
 
-    ipcMain.handle('secure:setToken', async (event, token) => {
-        // Сохраняет токен в системное хранилище
-        await keytar.setPassword(SERVICE_NAME, ACCOUNT_NAME, token);
-    });
+    ipcMain.handle('secure:setToken', async (event, token) => {
+        // Сохраняет токен в системное хранилище
+        await keytar.setPassword(SERVICE_NAME, ACCOUNT_NAME, token);
+    });
 
-    ipcMain.handle('secure:deleteToken', async () => {
-        // Удаляет токен из системного хранилища
-        await keytar.deletePassword(SERVICE_NAME, ACCOUNT_NAME);
+    ipcMain.handle('secure:deleteToken', async () => {
+        // Удаляет токен из системного хранилища
+        await keytar.deletePassword(SERVICE_NAME, ACCOUNT_NAME);
+    });
+    
+    // --- 2. НОВЫЙ IPC-ОБРАБОТЧИК ДЛЯ ПОЛУЧЕНИЯ ИЗБРАННЫХ ЭЛЕМЕНТОВ ---
+    ipcMain.on('tray:update-favorites', (event, favorites) => {
+        favoritesData = favorites;
+        updateTrayMenu(); // Обновляем меню при получении новых данных
     });
 
 });
 
 // Закрыть приложение, когда закрыты все окна (кроме macOS)
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
+  // На macOS приложение обычно продолжает работать, даже если все окна закрыты
+  if (process.platform !== 'darwin') {
+    // В Windows и Linux выходим только если нет трея (иначе трей держит приложение)
+    if (!appTray) {
+        app.quit();
+    }
+  }
 });
 
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
-  }
+  if (BrowserWindow.getAllWindows().length === 0) {
+    createWindow();
+  }
 });

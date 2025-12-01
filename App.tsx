@@ -2,47 +2,53 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { TokenInput } from './components/TokenInput';
 import { Dashboard } from './components/Dashboard';
 import { fetchUserInfo, executeScenario, toggleDevice } from './services/yandexIoT';
-import { AppState, YandexUserInfoResponse } from './types';
+// Обновляем импорт, чтобы включить Device
+import { AppState, YandexUserInfoResponse, Device, YandexRoom, YandexScenario, TrayMenuItem, TrayItemType } from './types'; 
 import { AlertCircle, X } from 'lucide-react';
 
-const yandexApi = window.api; // Получаем доступ к IPC-мосту
+// Получаем доступ к IPC-мосту, предоставленному Electron preload скриптом
+// @ts-ignore - yandexApi предоставляется глобально в Electron
+const yandexApi = window.api; 
 
-// Функции для работы с LocalStorage
+// --- Вспомогательные функции для LocalStorage ---
 const getFavorites = (key: string): string[] => {
-    try {
-        const stored = localStorage.getItem(key);
-        return stored ? JSON.parse(stored) : [];
-    } catch (e) {
-        console.error("Error reading favorites from localStorage", e);
-        return [];
-    }
+    try {
+        const stored = localStorage.getItem(key);
+        return stored ? JSON.parse(stored) : [];
+    } catch (e) {
+        console.error("Error reading favorites from localStorage", e);
+        return [];
+    }
 };
 
 const setFavorites = (key: string, ids: string[]): void => {
-    try {
-        localStorage.setItem(key, JSON.stringify(ids));
-    } catch (e) {
-        console.error("Error saving favorites to localStorage", e);
-    }
+    try {
+        localStorage.setItem(key, JSON.stringify(ids));
+    } catch (e) {
+        console.error("Error saving favorites to localStorage", e);
+    }
 };
-// ...
 
 function App() {
-  const [appState, setAppState] = useState<AppState>(AppState.LOADING);
-  const [token, setToken] = useState<string | null>(null);
-  const [userData, setUserData] = useState<YandexUserInfoResponse | null>(null);
-  const [errorMsg, setErrorMsg] = useState<string | undefined>(undefined);
-  const [notification, setNotification] = useState<{message: string, type: 'error' | 'success'} | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  
-  const [favoriteDeviceIds, setFavoriteDeviceIds] = useState<string[]>(getFavorites('favoriteDeviceIds'));
-  const [favoriteScenarioIds, setFavoriteScenarioIds] = useState<string[]>(getFavorites('favoriteScenarioIds'));
+  // --- Состояние приложения ---
+  const [appState, setAppState] = useState<AppState>(AppState.LOADING);
+  const [token, setToken] = useState<string | null>(null);
+  const [userData, setUserData] = useState<YandexUserInfoResponse | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | undefined>(undefined);
+  const [notification, setNotification] = useState<{message: string, type: 'error' | 'success'} | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  
+  // Состояние избранного, загруженное из LocalStorage
+  const [favoriteDeviceIds, setFavoriteDeviceIds] = useState<string[]>(getFavorites('favoriteDeviceIds'));
+  const [favoriteScenarioIds, setFavoriteScenarioIds] = useState<string[]>(getFavorites('favoriteScenarioIds'));
 
-	const showNotification = (message: string, type: 'error' | 'success' = 'error') => {
-	  setNotification({ message, type });
-	  setTimeout(() => setNotification(null), 5000); // Auto hide
-	};	
-	
+	// --- Уведомления ---
+	const showNotification = useCallback((message: string, type: 'error' | 'success' = 'error') => {
+	  setNotification({ message, type });
+	  setTimeout(() => setNotification(null), 5000); // Автоматическое скрытие
+	}, []); // Зависимости не требуются
+
+	// --- Функция для обеспечения стабильного порядка элементов ---
 	const stableSortData = useCallback((data: YandexUserInfoResponse): YandexUserInfoResponse => {
         // 1. Сортировка устройств по ID (для стабильности при переключении)
         const sortedDevices: Device[] = [...data.devices].sort((a, b) => a.id.localeCompare(b.id));
@@ -53,245 +59,343 @@ function App() {
         // 3. Сортировка сценариев по названию
         const sortedScenarios: YandexScenario[] = [...data.scenarios].sort((a, b) => a.name.localeCompare(b.name));
 
-        return { 
-            ...data, 
+        return { 
+            ...data, 
             devices: sortedDevices,
             rooms: sortedRooms,
             scenarios: sortedScenarios,
         };
     }, []);
 
-  const handleToggleDeviceFavorite = useCallback((id: string) => {
-	setFavoriteDeviceIds(prevIds => {
-		const newIds = prevIds.includes(id) 
-			? prevIds.filter(itemId => itemId !== id) // Удаляем
-			: [...prevIds, id];                        // Добавляем
-		setFavorites('favoriteDeviceIds', newIds);
-		return newIds;
-	});
-  }, []);
 
-  const handleToggleScenarioFavorite = useCallback((id: string) => {
-	setFavoriteScenarioIds(prevIds => {
-		const newIds = prevIds.includes(id) 
-			? prevIds.filter(itemId => itemId !== id)
-			: [...prevIds, id];
-		setFavorites('favoriteScenarioIds', newIds);
-		return newIds;
-	});
-  }, []);
-	
-	// --- 1. ФУНКЦИЯ ДЛЯ ТИХОГО ФОНОВОГО ОБНОВЛЕНИЯ ДАННЫХ (НЕ СБРАСЫВАЕТ SCROLL) ---
-  const refreshDashboardData = useCallback(async (apiToken: string) => {
-	setIsRefreshing(true);
-    try {
-      const data = await fetchUserInfo(apiToken);
-	  const sortedData = stableSortData(data);
-      setUserData(sortedData);
-	  showNotification('Данные успешно обновлены.', 'success');
-      // Важно: не меняем appState, чтобы оставаться на Dashboard и не терять скролл
-    } catch (err: unknown) {
-      // Если при фоновом обновлении получаем ошибку авторизации,
-      // выходим из системы (fallback)
-      if (err instanceof Error && (err.message.includes('401') || err.message.includes('403'))) {
-          await yandexApi.deleteSecureToken(); 
-          setToken(null);
-          setUserData(null);
-          setAppState(AppState.AUTH);
-          showNotification('Сессия истекла. Пожалуйста, введите токен заново.', 'error');
-      } else {
-        showNotification('Ошибка обновления данных.', 'error');
-      }
-    } finally {
-        setIsRefreshing(false); // <-- Конец загрузки
-    }
-  }, [showNotification, stableSortData]);
-  
-  
-	// --- 2. ФУНКЦИЯ ДЛЯ ИНИЦИАЛИЗАЦИИ И АВТОРИЗАЦИИ (МЕНЯЕТ appState) ---
+	// --- ФУНКЦИИ ДЕЙСТВИЙ ---
+
+	// Функция для тихого фонового обновления данных (не сбрасывает scroll)
+  	const refreshDashboardData = useCallback(async (apiToken: string) => {
+		setIsRefreshing(true);
+    	try {
+      		const data = await fetchUserInfo(apiToken);
+	  		const sortedData = stableSortData(data);
+      		setUserData(sortedData);
+	  		showNotification('Данные успешно обновлены.', 'success');
+      		// Важно: не меняем appState, чтобы оставаться на Dashboard и не терять скролл
+    	} catch (err: unknown) {
+      		// Если при фоновом обновлении получаем ошибку авторизации, выходим из системы
+      		if (err instanceof Error && (err.message.includes('401') || err.message.includes('403'))) {
+          		await yandexApi.deleteSecureToken(); 
+          		setToken(null);
+          		setUserData(null);
+          		setAppState(AppState.AUTH);
+          		showNotification('Сессия истекла. Пожалуйста, введите токен заново.', 'error');
+      		} else {
+        		showNotification('Ошибка обновления данных.', 'error');
+      		}
+    	} finally {
+        		setIsRefreshing(false); 
+    	}
+  	}, [showNotification, stableSortData]);
+  
+	// Функция для инициализации и авторизации (меняет appState)
 	const loadData = useCallback(async (apiToken: string) => {
 		setAppState(AppState.LOADING);
 		setErrorMsg(undefined);
 		try {
-		  const data = await fetchUserInfo(apiToken);
-		  const sortedData = stableSortData(data);
-		  setUserData(sortedData);
-		  setAppState(AppState.DASHBOARD);
+		  const data = await fetchUserInfo(apiToken);
+		  const sortedData = stableSortData(data);
+		  setUserData(sortedData);
+		  setAppState(AppState.DASHBOARD);
 		} catch (err: unknown) {
-		  if (err instanceof Error) {
+		  if (err instanceof Error) {
 			setErrorMsg(err.message);
-		  } else {
+		  } else {
 			setErrorMsg('Неизвестная ошибка');
-		  }
-		  setAppState(AppState.AUTH);
-		  
-		  // If unauthorized, clear invalid token
-		  if (err instanceof Error && (err.message.includes('401') || err.message.includes('403'))) {
-			  await yandexApi.deleteSecureToken();
-			  setToken(null);
-		  }
+		  }
+		  setAppState(AppState.AUTH);
+		  
+		  // Если ошибка авторизации, очищаем невалидный токен
+		  if (err instanceof Error && (err.message.includes('401') || err.message.includes('403'))) {
+			  await yandexApi.deleteSecureToken();
+			  setToken(null);
+		  }
 		}
-	  }, [stableSortData]);
+	  }, [stableSortData]);
 
+	// Обработчик переключения устройства (выполняется API-запрос + оптимистичное обновление)
+  	const handleToggleDevice = useCallback(async (deviceId: string, currentState: boolean) => {
+      	if (!token || !userData) return;
+      
+      	const newState = !currentState;
 
-  useEffect(() => {
-    const checkToken = async () => {
-		setAppState(AppState.LOADING);
-		
-		// ИСПОЛЬЗУЕМ IPC ДЛЯ БЕЗОПАСНОГО ИЗВЛЕЧЕНИЯ ТОКЕНА
-		const storedToken = await yandexApi.getSecureToken(); 
-		
-		if (storedToken) {
-			setToken(storedToken);
-			loadData(storedToken);
-		} else {
+    	try {
+          	// 1. Выполняем API-запрос на переключение
+          	await toggleDevice(token, deviceId, newState);
+          
+          	// 2. Оптимистичное обновление UI
+          	setUserData(prevData => {
+              		if (!prevData) return null;
+              
+              		const updatedDevices = prevData.devices.map(device => {
+                  		if (device.id === deviceId) {
+                    			const updatedCapabilities = device.capabilities.map(cap => {
+                          		if (cap.type === 'devices.capabilities.on_off') {
+                          			return {
+                              			...cap,
+                              			state: { ...cap.state, instance: 'on', value: newState }
+                          			};
+                          		}
+                          		return cap;
+                    			});
+                    			return { ...device, capabilities: updatedCapabilities };
+                  		}
+                  		return device;
+              		});
+
+            		return stableSortData({ ...prevData, devices: updatedDevices });
+          	});
+		  
+			// 3. Запускаем полное обновление для синхронизации
+		  	refreshDashboardData(token);
+		  
+      	} catch (err) {
+          	if (err instanceof Error) {
+          		showNotification(`Ошибка: ${err.message}`, 'error');
+          	} else {
+          		showNotification('Не удалось переключить устройство', 'error');
+          	}
+          	throw err; // Пробрасываем ошибку для обработки, например, в трее
+      	}
+  	}, [token, userData, refreshDashboardData, stableSortData, showNotification]);
+
+	// Обработчик запуска сценария
+  	const handleExecuteScenario = useCallback(async (scenarioId: string) => {
+    		if (!token) return;
+    		try {
+      			await executeScenario(token, scenarioId);
+      			showNotification('Сценарий успешно запущен', 'success');
+				// Обновляем данные на случай, если сценарий изменил состояние устройств
+				refreshDashboardData(token); 
+    		} catch (err) {
+      			if (err instanceof Error) {
+        				showNotification(err.message, 'error');
+      			} else {
+        				showNotification('Ошибка выполнения сценария', 'error');
+      			}
+      			throw err; // Пробрасываем ошибку для обработки, например, в трее
+    		}
+  	}, [token, refreshDashboardData, showNotification]);
+	
+	// Обработчик отправки токена
+  	const handleTokenSubmit = async (newToken: string) => {
+    		setToken(newToken);
+    		// Сохраняем токен безопасно через IPC
+			await yandexApi.setSecureToken(newToken); 
+			loadData(newToken);
+  	};
+
+	// Обработчик выхода
+  	const handleLogout = async () => {
+    		// Удаляем токен безопасно через IPC
+			await yandexApi.deleteSecureToken(); 
+			
+			setToken(null);
+			setUserData(null);
 			setAppState(AppState.AUTH);
-		}
-	};
-	checkToken();
-  }, [loadData]);
+			setErrorMsg(undefined);
+  	};
 
-  
+	// --- Управление избранным ---
+	const handleToggleDeviceFavorite = useCallback((id: string) => {
+		setFavoriteDeviceIds(prevIds => {
+			const newIds = prevIds.includes(id) 
+				? prevIds.filter(itemId => itemId !== id) // Удаляем
+				: [...prevIds, id];                        // Добавляем
+			setFavorites('favoriteDeviceIds', newIds);
+			return newIds;
+		});
+	}, []);
 
-  
+	const handleToggleScenarioFavorite = useCallback((id: string) => {
+		setFavoriteScenarioIds(prevIds => {
+			const newIds = prevIds.includes(id) 
+				? prevIds.filter(itemId => itemId !== id)
+				: [...prevIds, id];
+			setFavorites('favoriteScenarioIds', newIds);
+			return newIds;
+		});
+	}, []);
 
-  const handleTokenSubmit = async (newToken: string) => {
-    setToken(newToken);
-        
-	// ИСПОЛЬЗУЕМ IPC ДЛЯ СОХРАНЕНИЯ ТОКЕНА
-	await yandexApi.setSecureToken(newToken); 
-	
-	loadData(newToken);
-  };
+  // --- 1. useEffect: Проверка токена при запуске ---
+  useEffect(() => {
+    	const checkToken = async () => {
+			setAppState(AppState.LOADING);
+			
+			// Используем IPC для безопасного извлечения токена
+			const storedToken = await yandexApi.getSecureToken(); 
+			
+			if (storedToken) {
+				setToken(storedToken);
+				loadData(storedToken);
+			} else {
+				setAppState(AppState.AUTH);
+			}
+		};
+		checkToken();
+  }, [loadData]); // Зависимость от loadData
 
-  const handleLogout = async () => {
-    // ИСПОЛЬЗУЕМ IPC ДЛЯ УДАЛЕНИЯ ТОКЕНА
-	await yandexApi.deleteSecureToken(); 
-	
-	setToken(null);
-	setUserData(null);
-	setAppState(AppState.AUTH);
-	setErrorMsg(undefined);
-  };
+  
+// --- 2. Вспомогательная функция для подготовки данных для трея ---
+const getTrayMenuItems = useCallback((
+    data: YandexUserInfoResponse | null,
+    favDevices: string[],
+    favScenarios: string[]
+): TrayMenuItem[] => {
+    if (!data) return [];
 
-  const handleExecuteScenario = useCallback(async (scenarioId: string) => {
-    if (!token) return;
-    try {
-        await executeScenario(token, scenarioId);
-        showNotification('Сценарий успешно запущен', 'success');
-		refreshDashboardData(token);
-    } catch (err) {
-        if (err instanceof Error) {
-            showNotification(err.message, 'error');
-        } else {
-            showNotification('Ошибка выполнения сценария', 'error');
-        }
-        throw err; // Re-throw to let component know
-    }
-  }, [token, refreshDashboardData]);
+    const deviceMap = new Map(data.devices.map(d => [d.id, d]));
+    const scenarioMap = new Map(data.scenarios.map(s => [s.id, s]));
+    
+    // 1. Избранные устройства
+    const favDeviceItems: TrayMenuItem[] = favDevices
+        .map(id => deviceMap.get(id))
+        .filter((d): d is Device => !!d) 
+        .map(device => {
+            const onOffCapability = device.capabilities.find(c => c.type === 'devices.capabilities.on_off');
+            return {
+                id: device.id,
+                name: device.name,
+                type: 'device' as TrayItemType,
+                isToggleable: !!onOffCapability,
+                isOn: onOffCapability?.state?.value === true,
+            };
+        });
 
-  const handleToggleDevice = useCallback(async (deviceId: string, currentState: boolean) => {
-      if (!token || !userData) return;
-      
-      const newState = !currentState;
+    // 2. Избранные сценарии
+    const favScenarioItems: TrayMenuItem[] = favScenarios
+        .map(id => scenarioMap.get(id))
+        .filter((s): s is YandexScenario => !!s)
+        .map(scenario => ({
+            id: scenario.id,
+            name: scenario.name,
+            type: 'scenario' as TrayItemType,
+        }));
+        
+    return [...favDeviceItems, ...favScenarioItems];
+}, []);
 
-      try {
-          await toggleDevice(token, deviceId, newState);
-          
-          // Optimistically update the UI state
-          setUserData(prevData => {
-              if (!prevData) return null;
-              
-              const updatedDevices = prevData.devices.map(device => {
-                  if (device.id === deviceId) {
-                      // Clone device and capabilities
-                      const updatedCapabilities = device.capabilities.map(cap => {
-                          if (cap.type === 'devices.capabilities.on_off') {
-                              return {
-                                  ...cap,
-                                  state: { ...cap.state, instance: 'on', value: newState }
-                              };
-                          }
-                          return cap;
-                      });
-                      return { ...device, capabilities: updatedCapabilities };
-                  }
-                  return device;
-              });
+// --- 3. useEffect: Отправка данных избранного в главный процесс (для меню трея) ---
+useEffect(() => {
+    if (appState === AppState.DASHBOARD && userData) {
+        const trayItems = getTrayMenuItems(userData, favoriteDeviceIds, favoriteScenarioIds);
+        // Отправляем данные в главный процесс для обновления меню трея
+        yandexApi.sendFavoritesToTray(trayItems);
+    }
+}, [appState, userData, favoriteDeviceIds, favoriteScenarioIds, getTrayMenuItems]);
 
-              return stableSortData({ ...prevData, devices: updatedDevices });
-          });
-		  
-		  refreshDashboardData(token);
-		  
-      } catch (err) {
-          if (err instanceof Error) {
-            showNotification(`Ошибка: ${err.message}`, 'error');
-          } else {
-            showNotification('Не удалось переключить устройство', 'error');
-          }
-          throw err;
-      }
-  }, [token, userData, refreshDashboardData, stableSortData]);
 
-  // Global Notification Toast
-  const NotificationToast = () => {
-      if (!notification) return null;
-      return (
-          <div className={`fixed bottom-6 right-6 z-[100] px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-bottom-5 fade-in duration-300 border ${notification.type === 'error' ? 'bg-red-900/90 border-red-500/30 text-white' : 'bg-green-900/90 border-green-500/30 text-white'}`}>
-              {notification.type === 'error' ? <AlertCircle className="w-5 h-5" /> : <div className="w-5 h-5 rounded-full border-2 border-white/50 border-t-white animate-spin-none" />} 
-              <span className="text-sm font-medium">{notification.message}</span>
-              <button onClick={() => setNotification(null)} className="ml-2 opacity-70 hover:opacity-100">
-                  <X className="w-4 h-4"/>
-              </button>
-          </div>
-      );
-  };
+// --- 4. useEffect: Обработка команд из трея ---
+useEffect(() => {
+    // Вспомогательная функция для выполнения команды переключения устройства
+    const handleDeviceToggleCommand = async (deviceId: string, currentState: boolean) => {
+        // Используем основной обработчик, который содержит логику API-запроса,
+		// оптимистичного обновления и полного обновления данных.
+        if (token) {
+            try {
+                await handleToggleDevice(deviceId, currentState); 
+            } catch (error) {
+                // Ошибка уже обработана внутри handleToggleDevice
+            }
+        }
+    };
+    
+    // Вспомогательная функция для выполнения команды запуска сценария
+    const handleScenarioExecuteCommand = async (scenarioId: string) => {
+        // Используем основной обработчик
+        if (token) {
+            try {
+                await handleExecuteScenario(scenarioId);
+            } catch (error) {
+                // Ошибка уже обработана внутри handleExecuteScenario
+            }
+        }
+    };
 
-  // Loading Screen
-  if (appState === AppState.LOADING) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-slate-400 animate-pulse">Загрузка данных...</p>
-        </div>
-      </div>
-    );
-  }
+    // Слушаем команду от главного процесса
+    yandexApi.onTrayCommand((command: string, id: string, currentState: boolean | undefined) => {
+        if (command === 'TOGGLE_DEVICE' && typeof currentState === 'boolean') {
+            handleDeviceToggleCommand(id, currentState);
+        } else if (command === 'EXECUTE_SCENARIO') {
+            handleScenarioExecuteCommand(id);
+        }
+    });
 
-  // Dashboard
-  if (appState === AppState.DASHBOARD && userData) {
-    return (
-      <>
-        <Dashboard 
-          data={userData} 
-          onLogout={handleLogout} 
-          onExecuteScenario={handleExecuteScenario} 
-          onToggleDevice={handleToggleDevice}
-		  onRefresh={() => token && refreshDashboardData(token)}
-          isRefreshing={isRefreshing}
-		  favoriteDeviceIds={favoriteDeviceIds}
+    // Функция очистки (важно для удаления слушателя при демонтировании компонента)
+    return () => {
+        yandexApi.removeTrayCommandListener();
+    };
+}, [handleToggleDevice, handleExecuteScenario, token]);  // Зависимости корректны
+  
+
+  // Global Notification Toast Component
+  const NotificationToast = () => {
+      if (!notification) return null;
+      return (
+          <div className={`fixed bottom-6 right-6 z-[100] px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-bottom-5 fade-in duration-300 border ${notification.type === 'error' ? 'bg-red-900/90 border-red-500/30 text-white' : 'bg-green-900/90 border-green-500/30 text-white'}`}>
+              {notification.type === 'error' ? <AlertCircle className="w-5 h-5" /> : <div className="w-5 h-5 rounded-full border-2 border-white/50 border-t-white animate-spin-none" />} 
+              <span className="text-sm font-medium">{notification.message}</span>
+              <button onClick={() => setNotification(null)} className="ml-2 opacity-70 hover:opacity-100">
+                  <X className="w-4 h-4"/>
+              </button>
+          </div>
+      );
+  };
+
+  // --- Рендеринг в зависимости от состояния приложения ---
+
+  // Экран загрузки
+  if (appState === AppState.LOADING) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-900">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-slate-400 animate-pulse">Загрузка данных...</p>
+        </div>
+        <NotificationToast />
+      </div>
+    );
+  }
+
+  // Основная панель
+  if (appState === AppState.DASHBOARD && userData) {
+    return (
+      <>
+        <Dashboard 
+          data={userData} 
+          onLogout={handleLogout} 
+          onExecuteScenario={handleExecuteScenario} 
+          onToggleDevice={handleToggleDevice}
+		  onRefresh={() => token && refreshDashboardData(token)}
+          isRefreshing={isRefreshing}
+		  favoriteDeviceIds={favoriteDeviceIds}
           onToggleDeviceFavorite={handleToggleDeviceFavorite}
           favoriteScenarioIds={favoriteScenarioIds}
           onToggleScenarioFavorite={handleToggleScenarioFavorite}
-        />
-        <NotificationToast />
-      </>
-    );
-  }
+        />
+        <NotificationToast />
+      </>
+    );
+  }
 
-  // Auth Screen (Default fallthrough)
-  return (
-    <>
-        <TokenInput 
-        onTokenSubmit={handleTokenSubmit} 
-        isLoading={false}
-        error={errorMsg}
-        />
-        {/* If there was a fatal error in loadData leading to Auth screen, notification might still be useful, or use errorMsg prop */}
-    </>
-  );
+  // Экран авторизации (по умолчанию)
+  return (
+    <>
+        <TokenInput 
+        onTokenSubmit={handleTokenSubmit} 
+        isLoading={false}
+        error={errorMsg}
+        />
+        <NotificationToast />
+    </>
+  );
 }
 
 export default App;

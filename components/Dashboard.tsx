@@ -4,6 +4,20 @@ import { ScenarioCard } from './ScenarioCard';
 import { DeviceCard } from './DeviceCard';
 import { LogOut, Home, Layers, MonitorSmartphone, RefreshCw, X, Star } from 'lucide-react';
 
+
+// 1. Константы для хранения и значения по умолчанию (хорошая практика)
+const HOME_NAME_STORAGE_KEY = 'dashboard_home_name';
+const DEFAULT_HOME_NAME = 'Мой Дом';
+
+// 2. Функция для получения начального имени из localStorage
+const getInitialHomeName = () => {
+    // Проверяем, доступен ли localStorage (на случай рендеринга на сервере, хотя в Electron это обычно не нужно)
+    if (typeof window !== 'undefined' && window.localStorage) {
+        return localStorage.getItem(HOME_NAME_STORAGE_KEY) || DEFAULT_HOME_NAME;
+    }
+    return DEFAULT_HOME_NAME;
+};
+
 interface DashboardProps {
   data: YandexUserInfoResponse;
   onLogout: () => void;
@@ -21,10 +35,32 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onLogout, onExecuteS
   const activeScenarios = data.scenarios.filter(s => s.is_active);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
+  // Инициализация homeName с использованием сохраненного значения
+  const [homeName, setHomeName] = useState(getInitialHomeName); 
+  const [isEditingName, setIsEditingName] = useState(false);
+
   const favoriteScenarios = data.scenarios.filter(s => favoriteScenarioIds.includes(s.id));
   const favoriteDevices = data.devices.filter(d => favoriteDeviceIds.includes(d.id));
     
   const hasFavorites = favoriteScenarios.length > 0 || favoriteDevices.length > 0;
+
+  const handleSaveName = (event: React.FormEvent<HTMLInputElement>) => {
+        let newName = event.currentTarget.value.trim();
+
+        if (newName === '') {
+            newName = DEFAULT_HOME_NAME;
+        }
+
+        setHomeName(newName);
+        
+        // --- Главное изменение: Запись в localStorage ---
+        if (typeof window !== 'undefined' && window.localStorage) {
+            localStorage.setItem(HOME_NAME_STORAGE_KEY, newName);
+        }
+        // ------------------------------------------------
+
+        setIsEditingName(false);
+    };
 
   return (
     <div className="min-h-screen bg-background text-slate-100 pb-12">
@@ -35,7 +71,34 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onLogout, onExecuteS
             <div className="p-2 bg-primary/20 rounded-lg">
               <Home className="w-5 h-5 text-primary" />
             </div>
-            <h1 className="text-lg font-bold tracking-tight">Мой Дом</h1>
+            {isEditingName ? (
+				<input
+				  type="text"
+				  value={homeName}
+				  onChange={(e) => setHomeName(e.target.value)}
+				  onBlur={handleSaveName} // Сохранение при потере фокуса
+				  onKeyDown={(e) => {
+					if (e.key === 'Enter') {
+					  handleSaveName(e); // Сохранение при нажатии Enter
+					} else if (e.key === 'Escape') {
+						setIsEditingName(false); // Отмена при нажатии Esc
+					}
+				  }}
+				  className="text-lg font-bold tracking-tight bg-slate-700 rounded px-2 py-0.5 outline-none focus:ring-2 focus:ring-primary"
+				  autoFocus // Установить фокус сразу после перехода в режим редактирования
+				  aria-label="Имя Дома"
+				  maxLength={30} // Ограничение на длину имени
+				/>
+			  ) : (
+				// В режиме отображения делаем H1 кликабельным для перехода в режим редактирования
+				<h1 
+				  className="text-lg font-bold tracking-tight cursor-pointer hover:text-slate-300 transition-colors"
+				  onClick={() => setIsEditingName(true)} // Переключение в режим редактирования
+				  title="Нажмите, чтобы изменить название"
+				>
+				  {homeName}
+				</h1>
+			  )}
           </div>
           
           <div className="flex items-center gap-4">
