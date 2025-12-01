@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
 import { YandexDevice } from '../types';
 import { getIconForDevice } from '../constants';
-import { Loader2, Power } from 'lucide-react';
+import { Loader2, Power, Star } from 'lucide-react';
 
 interface DeviceCardProps {
   device: YandexDevice;
   onToggle: (id: string, currentState: boolean) => Promise<void>;
+  isFavorite: boolean;
+  onToggleFavorite: (id: string) => void;
 }
 
-export const DeviceCard: React.FC<DeviceCardProps> = ({ device, onToggle }) => {
+export const DeviceCard: React.FC<DeviceCardProps> = ({ device, onToggle, isFavorite, onToggleFavorite }) => {
   const [loading, setLoading] = useState(false);
 
   // Find the on_off capability
@@ -51,6 +53,21 @@ export const DeviceCard: React.FC<DeviceCardProps> = ({ device, onToggle }) => {
         }
       `}
     >
+	
+	<button
+          onClick={(e) => {
+              e.stopPropagation(); // Важно: предотвращаем переключение устройства
+              onToggleFavorite(device.id);
+          }}
+          className={`
+              absolute top-3 right-3 z-20 p-1 rounded-full transition-all duration-200
+              ${isFavorite ? 'text-accent bg-surface/80 hover:bg-surface' : 'text-slate-500 hover:text-accent opacity-0 group-hover:opacity-100'}
+          `}
+          title={isFavorite ? 'Убрать из избранного' : 'Добавить в избранное'}
+      >
+          <Star className="w-4 h-4 fill-current" />
+      </button>
+	
       <div className="flex items-start justify-between w-full">
         <div className={`
             p-2 rounded-full transition-colors duration-300
@@ -59,6 +76,17 @@ export const DeviceCard: React.FC<DeviceCardProps> = ({ device, onToggle }) => {
           {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : React.cloneElement(icon as React.ReactElement<{ className?: string }>, { className: "w-5 h-5" })}
         </div>
 
+        
+      </div>
+
+      <div className="mt-2">
+        <p className="font-medium text-slate-100 line-clamp-1 text-sm">{device.name}</p>
+        <p className="text-xs text-slate-400 mt-0.5">
+            {loading ? 'Обновление...' : (isOn ? 'Включено' : 'Выключено')}
+        </p>
+      </div>
+	  
+	  <div className="flex justify-end">
         {isToggleable && (
              <div className={`
                 w-8 h-4 rounded-full relative transition-colors duration-300
@@ -70,13 +98,6 @@ export const DeviceCard: React.FC<DeviceCardProps> = ({ device, onToggle }) => {
                  `} style={{ left: isOn ? '1.1rem' : '0.15rem' }}></div>
              </div>
         )}
-      </div>
-
-      <div className="mt-2">
-        <p className="font-medium text-slate-100 line-clamp-1 text-sm">{device.name}</p>
-        <p className="text-xs text-slate-400 mt-0.5">
-            {loading ? 'Обновление...' : (isOn ? 'Включено' : 'Выключено')}
-        </p>
       </div>
     </button>
   );

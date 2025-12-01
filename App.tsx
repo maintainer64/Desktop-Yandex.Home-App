@@ -7,6 +7,26 @@ import { AlertCircle, X } from 'lucide-react';
 
 const yandexApi = window.api; // Получаем доступ к IPC-мосту
 
+// Функции для работы с LocalStorage
+const getFavorites = (key: string): string[] => {
+    try {
+        const stored = localStorage.getItem(key);
+        return stored ? JSON.parse(stored) : [];
+    } catch (e) {
+        console.error("Error reading favorites from localStorage", e);
+        return [];
+    }
+};
+
+const setFavorites = (key: string, ids: string[]): void => {
+    try {
+        localStorage.setItem(key, JSON.stringify(ids));
+    } catch (e) {
+        console.error("Error saving favorites to localStorage", e);
+    }
+};
+// ...
+
 function App() {
   const [appState, setAppState] = useState<AppState>(AppState.LOADING);
   const [token, setToken] = useState<string | null>(null);
@@ -14,6 +34,9 @@ function App() {
   const [errorMsg, setErrorMsg] = useState<string | undefined>(undefined);
   const [notification, setNotification] = useState<{message: string, type: 'error' | 'success'} | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  
+  const [favoriteDeviceIds, setFavoriteDeviceIds] = useState<string[]>(getFavorites('favoriteDeviceIds'));
+  const [favoriteScenarioIds, setFavoriteScenarioIds] = useState<string[]>(getFavorites('favoriteScenarioIds'));
 
 	const showNotification = (message: string, type: 'error' | 'success' = 'error') => {
 	  setNotification({ message, type });
@@ -37,6 +60,26 @@ function App() {
             scenarios: sortedScenarios,
         };
     }, []);
+
+  const handleToggleDeviceFavorite = useCallback((id: string) => {
+	setFavoriteDeviceIds(prevIds => {
+		const newIds = prevIds.includes(id) 
+			? prevIds.filter(itemId => itemId !== id) // Удаляем
+			: [...prevIds, id];                        // Добавляем
+		setFavorites('favoriteDeviceIds', newIds);
+		return newIds;
+	});
+  }, []);
+
+  const handleToggleScenarioFavorite = useCallback((id: string) => {
+	setFavoriteScenarioIds(prevIds => {
+		const newIds = prevIds.includes(id) 
+			? prevIds.filter(itemId => itemId !== id)
+			: [...prevIds, id];
+		setFavorites('favoriteScenarioIds', newIds);
+		return newIds;
+	});
+  }, []);
 	
 	// --- 1. ФУНКЦИЯ ДЛЯ ТИХОГО ФОНОВОГО ОБНОВЛЕНИЯ ДАННЫХ (НЕ СБРАСЫВАЕТ SCROLL) ---
   const refreshDashboardData = useCallback(async (apiToken: string) => {
@@ -228,6 +271,10 @@ function App() {
           onToggleDevice={handleToggleDevice}
 		  onRefresh={() => token && refreshDashboardData(token)}
           isRefreshing={isRefreshing}
+		  favoriteDeviceIds={favoriteDeviceIds}
+          onToggleDeviceFavorite={handleToggleDeviceFavorite}
+          favoriteScenarioIds={favoriteScenarioIds}
+          onToggleScenarioFavorite={handleToggleScenarioFavorite}
         />
         <NotificationToast />
       </>

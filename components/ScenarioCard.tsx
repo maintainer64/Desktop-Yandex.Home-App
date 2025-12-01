@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
 import { getIconForScenario } from '../constants';
 import { YandexScenario } from '../types';
-import { Loader2, CheckCircle2 } from 'lucide-react';
+import { Loader2, CheckCircle2, Star } from 'lucide-react';
 
 interface ScenarioCardProps {
   scenario: YandexScenario;
   onExecute: (id: string) => Promise<void>;
+  isFavorite: boolean;
+  onToggleFavorite: (id: string) => void;
 }
 
-export const ScenarioCard: React.FC<ScenarioCardProps> = ({ scenario, onExecute }) => {
+export const ScenarioCard: React.FC<ScenarioCardProps> = ({ scenario, onExecute, isFavorite, onToggleFavorite }) => {
   const [loading, setLoading] = useState(false);
   const [justExecuted, setJustExecuted] = useState(false);
 
@@ -50,6 +52,21 @@ export const ScenarioCard: React.FC<ScenarioCardProps> = ({ scenario, onExecute 
         ${justExecuted ? 'ring-2 ring-green-500 bg-green-900/10' : ''}
       `}
     >
+	
+		<button
+          onClick={(e) => {
+              e.stopPropagation(); // Важно: предотвращаем запуск сценария
+              onToggleFavorite(scenario.id);
+          }}
+          className={`
+              absolute top-3 right-3 z-20 p-1 rounded-full transition-all duration-200
+              ${isFavorite ? 'text-accent bg-surface/80 hover:bg-surface' : 'text-slate-500 hover:text-accent opacity-0 group-hover:opacity-100'}
+          `}
+          title={isFavorite ? 'Убрать из избранного' : 'Добавить в избранное'}
+      >
+          <Star className="w-4 h-4 fill-current" />
+      </button>
+	
       {/* Background Gradient on Hover */}
       <div className="absolute inset-0 bg-gradient-to-br from-primary/0 to-primary/0 group-hover:from-primary/10 group-hover:to-transparent transition-all duration-500"></div>
 

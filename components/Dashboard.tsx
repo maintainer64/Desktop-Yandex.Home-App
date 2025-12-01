@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { YandexUserInfoResponse, YandexScenario } from '../types';
 import { ScenarioCard } from './ScenarioCard';
 import { DeviceCard } from './DeviceCard';
-import { LogOut, Home, Layers, MonitorSmartphone, RefreshCw, X } from 'lucide-react';
+import { LogOut, Home, Layers, MonitorSmartphone, RefreshCw, X, Star } from 'lucide-react';
 
 interface DashboardProps {
   data: YandexUserInfoResponse;
@@ -11,11 +11,20 @@ interface DashboardProps {
   onToggleDevice: (id: string, currentState: boolean) => Promise<void>;
   onRefresh: () => void;
   isRefreshing: boolean;
+  favoriteDeviceIds: string[];
+  onToggleDeviceFavorite: (id: string) => void;
+  favoriteScenarioIds: string[];
+  onToggleScenarioFavorite: (id: string) => void;
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({ data, onLogout, onExecuteScenario, onToggleDevice, onRefresh, isRefreshing }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ data, onLogout, onExecuteScenario, onToggleDevice, onRefresh, isRefreshing, favoriteDeviceIds, onToggleDeviceFavorite, favoriteScenarioIds,  onToggleScenarioFavorite }) => {
   const activeScenarios = data.scenarios.filter(s => s.is_active);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+
+  const favoriteScenarios = data.scenarios.filter(s => favoriteScenarioIds.includes(s.id));
+  const favoriteDevices = data.devices.filter(d => favoriteDeviceIds.includes(d.id));
+    
+  const hasFavorites = favoriteScenarios.length > 0 || favoriteDevices.length > 0;
 
   return (
     <div className="min-h-screen bg-background text-slate-100 pb-12">
@@ -71,6 +80,51 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onLogout, onExecuteS
                 </div>
             </div>
         </div>
+		
+		{hasFavorites && ( // ВОССТАНОВИТЬ СЕКЦИЮ ИЗБРАННОГО
+			<section className="mb-8">
+				<div className="flex items-center gap-3 mb-4">
+					<Star className="w-6 h-6 text-accent" />
+					<h2 className="text-2xl font-bold text-slate-50">Избранное</h2>
+				</div>
+
+				{/* Избранные сценарии */}
+				{favoriteScenarios.length > 0 && (
+					<>
+						<h3 className="text-lg font-medium text-slate-300 mt-6 mb-3">Сценарии ({favoriteScenarios.length})</h3>
+						<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+							{favoriteScenarios.map(scenario => (
+								<ScenarioCard 
+									key={scenario.id} 
+									scenario={scenario} 
+									onExecute={onExecuteScenario} 
+									isFavorite={true} 
+									onToggleFavorite={onToggleScenarioFavorite}
+								/>
+							))}
+						</div>
+					</>
+				)}
+
+				{/* Избранные устройства */}
+				{favoriteDevices.length > 0 && (
+					<>
+						<h3 className="text-lg font-medium text-slate-300 mt-6 mb-3">Устройства ({favoriteDevices.length})</h3>
+						<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+							{favoriteDevices.map(device => (
+								<DeviceCard 
+									key={device.id} 
+									device={device} 
+									onToggle={onToggleDevice} 
+									isFavorite={true} 
+									onToggleFavorite={onToggleDeviceFavorite}
+								/>
+							))}
+						</div>
+					</>
+				)}
+			</section>
+		)}
 
 
         {/* Scenarios Section */}
@@ -93,6 +147,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onLogout, onExecuteS
                   key={scenario.id} 
                   scenario={scenario} 
                   onExecute={onExecuteScenario} 
+				  isFavorite={favoriteScenarioIds.includes(scenario.id)}
+                  onToggleFavorite={onToggleScenarioFavorite}
                 />
               ))}
             </div>
@@ -106,7 +162,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onLogout, onExecuteS
             {data.rooms.length === 0 && data.devices.length > 0 && (
                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                     {data.devices.map(device => (
-                        <DeviceCard key={device.id} device={device} onToggle={onToggleDevice} />
+                        <DeviceCard 
+						key={device.id} 
+						device={device} 
+						onToggle={onToggleDevice} 
+						isFavorite={favoriteDeviceIds.includes(device.id)} 
+                        onToggleFavorite={onToggleDeviceFavorite}
+						/>
                     ))}
                  </div>
             )}
@@ -124,7 +186,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onLogout, onExecuteS
                             </h3>
                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                                 {roomDevices.map(dev => (
-                                    <DeviceCard key={dev.id} device={dev} onToggle={onToggleDevice} />
+                                    <DeviceCard 
+									key={dev.id} 
+									device={dev} 
+									onToggle={onToggleDevice} 
+									isFavorite={favoriteDeviceIds.includes(dev.id)} 
+									onToggleFavorite={onToggleDeviceFavorite}
+									/>
                                 ))}
                             </div>
                         </div>
@@ -143,7 +211,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onLogout, onExecuteS
                         <h3 className="font-semibold text-lg mb-4 text-slate-300">Без комнаты</h3>
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                             {unassignedDevices.map(dev => (
-                                <DeviceCard key={dev.id} device={dev} onToggle={onToggleDevice} />
+                                <DeviceCard 
+								key={dev.id} 
+								device={dev} 
+								onToggle={onToggleDevice} 
+								isFavorite={favoriteDeviceIds.includes(dev.id)} 
+								onToggleFavorite={onToggleDeviceFavorite}
+								/>
                             ))}
                         </div>
                      </div>
