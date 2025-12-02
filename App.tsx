@@ -3,11 +3,10 @@ import { TokenInput } from './components/TokenInput';
 import { Dashboard } from './components/Dashboard';
 import { fetchUserInfo, executeScenario, toggleDevice } from './services/yandexIoT';
 // Обновляем импорт, чтобы включить Device
-import { AppState, YandexUserInfoResponse, Device, YandexRoom, YandexScenario, TrayMenuItem, TrayItemType } from './types'; 
+import { AppState, YandexUserInfoResponse, YandexDevice, YandexRoom, YandexScenario, TrayMenuItem, TrayItemType } from './types'; 
 import { AlertCircle, X } from 'lucide-react';
 
 // Получаем доступ к IPC-мосту, предоставленному Electron preload скриптом
-// @ts-ignore - yandexApi предоставляется глобально в Electron
 const yandexApi = window.api; 
 
 // --- Вспомогательные функции для LocalStorage ---
@@ -51,7 +50,7 @@ function App() {
 	// --- Функция для обеспечения стабильного порядка элементов ---
 	const stableSortData = useCallback((data: YandexUserInfoResponse): YandexUserInfoResponse => {
         // 1. Сортировка устройств по ID (для стабильности при переключении)
-        const sortedDevices: Device[] = [...data.devices].sort((a, b) => a.id.localeCompare(b.id));
+        const sortedDevices: YandexDevice[] = [...data.devices].sort((a, b) => a.id.localeCompare(b.id));
 
         // 2. Сортировка комнат по названию
         const sortedRooms: YandexRoom[] = [...data.rooms].sort((a, b) => a.name.localeCompare(b.name));
@@ -257,7 +256,7 @@ const getTrayMenuItems = useCallback((
     // 1. Избранные устройства
     const favDeviceItems: TrayMenuItem[] = favDevices
         .map(id => deviceMap.get(id))
-        .filter((d): d is Device => !!d) 
+        .filter((d): d is YandexDevice => !!d) 
         .map(device => {
             const onOffCapability = device.capabilities.find(c => c.type === 'devices.capabilities.on_off');
             return {
