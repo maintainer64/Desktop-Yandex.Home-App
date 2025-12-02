@@ -70,10 +70,10 @@ function updateTrayMenu() {
         
         // Для устройств отображаем статус (Вкл/Выкл)
         const deviceStatus = isDevice
-            ? (item.isOn
-                ? ' 🟢' // Зеленый кружок для "Вкл" (включено)
-                : ' 🔴') // Красный кружок для "Выкл" (выключено)
-            : '';
+            ? (item.isOn
+                ? ' 🟢' // Зеленый кружок для "Вкл" (включено)
+                : ' 🔴') // Красный кружок для "Выкл" (выключено)
+            : '';
         const label = `${item.name}${deviceStatus}`;
         
         // Определяем действие при клике
@@ -152,57 +152,59 @@ function createWindow () {
     });
 
 
-    // В режиме разработки загружаем URL-адрес сервера Vite
-    if (process.env.NODE_ENV === 'development') {
-        mainWindow.loadURL('http://localhost:5173'); 
-    } else {
-        mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
-    }
+     // В режиме разработки загружаем URL-адрес сервера Vite
+    if (process.env.NODE_ENV === 'development') {
+        mainWindow.loadURL('http://localhost:5173'); 
+    } else {
+        mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
+    }
 }
 
 // Когда Electron готов
 app.whenReady().then(() => {
+    Menu.setApplicationMenu(null);
+
     createWindow();
     createTray(); // Создаем Tray
     
-    ipcMain.handle('yandex-api:fetchUserInfo', async (event, token) => {
-        try {
-            return await yandexApi.fetchUserInfo(token);
-        } catch (error) {
-            throw new Error(error.message); 
-        }
-    });
+    ipcMain.handle('yandex-api:fetchUserInfo', async (event, token) => {
+        try {
+            return await yandexApi.fetchUserInfo(token);
+        } catch (error) {
+            throw new Error(error.message); 
+        }
+    });
 
-    ipcMain.handle('yandex-api:executeScenario', async (event, token, scenarioId) => {
-        try {
-            return await yandexApi.executeScenario(token, scenarioId);
-        } catch (error) {
-            throw new Error(error.message);
-        }
-    });
+    ipcMain.handle('yandex-api:executeScenario', async (event, token, scenarioId) => {
+        try {
+            return await yandexApi.executeScenario(token, scenarioId);
+        } catch (error) {
+            throw new Error(error.message);
+        }
+    });
 
-    ipcMain.handle('yandex-api:toggleDevice', async (event, token, deviceId, newState) => {
-        try {
-            return await yandexApi.toggleDevice(token, deviceId, newState);
-        } catch (error) {
-            throw new Error(error.message);
-        }
-    });
+    ipcMain.handle('yandex-api:toggleDevice', async (event, token, deviceId, newState) => {
+        try {
+            return await yandexApi.toggleDevice(token, deviceId, newState);
+        } catch (error) {
+            throw new Error(error.message);
+        }
+    });
 
 	ipcMain.handle('secure:getToken', async () => {
-        // Читает токен из системного хранилища
-        return await keytar.getPassword(SERVICE_NAME, ACCOUNT_NAME);
-    });
+        // Читает токен из системного хранилища
+        return await keytar.getPassword(SERVICE_NAME, ACCOUNT_NAME);
+    });
 
-    ipcMain.handle('secure:setToken', async (event, token) => {
-        // Сохраняет токен в системное хранилище
-        await keytar.setPassword(SERVICE_NAME, ACCOUNT_NAME, token);
-    });
+    ipcMain.handle('secure:setToken', async (event, token) => {
+        // Сохраняет токен в системное хранилище
+        await keytar.setPassword(SERVICE_NAME, ACCOUNT_NAME, token);
+    });
 
-    ipcMain.handle('secure:deleteToken', async () => {
-        // Удаляет токен из системного хранилища
-        await keytar.deletePassword(SERVICE_NAME, ACCOUNT_NAME);
-    });
+    ipcMain.handle('secure:deleteToken', async () => {
+        // Удаляет токен из системного хранилища
+        await keytar.deletePassword(SERVICE_NAME, ACCOUNT_NAME);
+    });
     
     // --- 2. НОВЫЙ IPC-ОБРАБОТЧИК ДЛЯ ПОЛУЧЕНИЯ ИЗБРАННЫХ ЭЛЕМЕНТОВ ---
     ipcMain.on('tray:update-favorites', (event, favorites) => {
@@ -214,17 +216,17 @@ app.whenReady().then(() => {
 
 // Закрыть приложение, когда закрыты все окна (кроме macOS)
 app.on('window-all-closed', () => {
-  // На macOS приложение обычно продолжает работать, даже если все окна закрыты
-  if (process.platform !== 'darwin') {
-    // В Windows и Linux выходим только если нет трея (иначе трей держит приложение)
-    if (!appTray) {
-        app.quit();
+    // На macOS приложение обычно продолжает работать, даже если все окна закрыты
+    if (process.platform !== 'darwin') {
+        // В Windows и Linux выходим только если нет трея (иначе трей держит приложение)
+        if (!appTray) {
+            app.quit();
+        }
     }
-  }
 });
 
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
-  }
+    if (BrowserWindow.getAllWindows().length === 0) {
+        createWindow();
+    }
 });
