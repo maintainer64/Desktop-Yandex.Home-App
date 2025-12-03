@@ -1,6 +1,5 @@
 # Зависимости
 /node_modules
-/package-lock.json
 
 # Build-файлы Vite
 /dist
@@ -20,6 +19,7 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+.idea/
 
 # Кэш Vite
 .vite/
