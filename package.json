@@ -4,12 +4,21 @@
   "version": "1.2.1",
   "type": "module",
   "main": "main.js",
+  "description": "A PC application that allows you to control a smart home",
+  "author": "onegamerstory <gamecuts0412@gmail.com>",
+  "contributors": [
+    {
+      "name": "onegamerstory",
+      "email": "gamecuts0412@gmail.com"
+    }
+  ],
   "scripts": {
     "dev": "vite",
     "electron-dev": "node electron-wait-for-vite.js",
     "build": "vite build",
     "dist": "npm run build && electron-builder",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "publish": "electron-builder publish"
   },
   "dependencies": {
     "keytar": "^7.9.0",
@@ -26,11 +35,6 @@
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   },
-  
-
-  "author": "Your Name <youremail@example.com>",
-  "description": "Yandex Smart Home Control Application",
-  
   "build": {
     "appId": "com.onegamerstory.smarthomecontrol",
     "productName": "Yandex Smart Home Control",
@@ -41,19 +45,21 @@
       "main.js",
       "preload.cjs",
       "yandex-api.js",
-      "node_modules/**/*", 
+      "node_modules/**/*",
       "resources/*"
     ],
     "directories": {
       "output": "release"
     },
-    
-    
+    "publish": {
+      "provider": "github",
+      "owner": "maintainer64",
+      "repo": "Desktop-Yandex.Home-App"
+    },
     "win": {
       "target": "nsis",
       "icon": "resources/icon.ico"
     },
-    
     "mac": {
       "category": "public.app-category.utilities",
       "target": "dmg",
@@ -81,7 +87,6 @@
         }
       ]
     },
-    
     "linux": {
       "target": ["AppImage", "deb", "rpm"],
       "category": "Utility",
