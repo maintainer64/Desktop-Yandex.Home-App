@@ -53,6 +53,8 @@
 
 В Терминале выполните команду: 
 `xattr -d com.apple.quarantine /Applications/Yandex\ Smart\ Home\ Control.app`
+или с правами суперпользователя/администратора, добавив вначало `sudo`
+`sudo xattr -d com.apple.quarantine /Applications/Yandex\ Smart\ Home\ Control.app`
 
 ### Информация для Windows
 Приложение автоматически установится в директорию пользователя: 
